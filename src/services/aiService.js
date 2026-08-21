@@ -1,13 +1,13 @@
-const OpenAI = require('openai');
+const Groq = require('groq-sdk');
 
 const ALLOWED_DIFFICULTIES = ['Easy', 'Medium', 'Hard'];
 
 let customClient = null;
 
 /**
- * For testing purposes: inject a mock OpenAI client
+ * For testing purposes: inject a mock Groq client
  */
-function setOpenAiClient(client) {
+function setGroqClient(client) {
   customClient = client;
 }
 
@@ -72,7 +72,7 @@ function sanitizeAiResponse(parsedData, defaultDifficulty = 'Easy') {
 }
 
 /**
- * Analyze a student's answer and reasoning using OpenAI
+ * Analyze a student's answer and reasoning using Groq API
  * 
  * @param {Object} params
  * @param {string} params.question_text - Original question text
@@ -93,23 +93,26 @@ async function analyzeAttempt({
   student_answer,
   student_reasoning,
 }) {
-  const apiKey = process.env.OPENAI_API_KEY;
+  const apiKey = process.env.GROQ_API_KEY;
 
   if (!apiKey || !apiKey.trim()) {
+    console.log('[AI Diagnostic] AI analysis started: GROQ_API_KEY is not configured in process.env. Skipping Groq API call.');
     return {
       available: false,
       analyzed: false,
-      message: 'AI analysis unavailable: OPENAI_API_KEY is not configured in .env',
+      message: 'AI analysis unavailable: GROQ_API_KEY is not configured in .env',
       has_misconception: false,
       misconception: null,
       follow_up: null,
     };
   }
 
-  const model = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+  const model = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
+
+  console.log(`[AI Diagnostic] AI analysis started. Calling Groq (model: "${model}")...`);
 
   try {
-    const openai = customClient || new OpenAI({ apiKey: apiKey.trim() });
+    const groq = customClient || new Groq({ apiKey: apiKey.trim() });
 
     const systemPrompt = `You are an expert diagnostic tutor and educational psychologist.
 Analyze the student's answer and reasoning to detect conceptual errors, procedural flaws, or underlying misconceptions.
@@ -145,7 +148,7 @@ Authoritative Correct Answer: ${correct_answer}
 Student Answer: ${student_answer}
 Student Reasoning: ${student_reasoning || 'No reasoning provided.'}`;
 
-    const completion = await openai.chat.completions.create({
+    const completion = await groq.chat.completions.create({
       model,
       messages: [
         { role: 'system', content: systemPrompt },
@@ -158,11 +161,13 @@ Student Reasoning: ${student_reasoning || 'No reasoning provided.'}`;
 
     const rawContent = completion.choices[0]?.message?.content;
     if (!rawContent) {
-      throw new Error('Empty response from OpenAI');
+      throw new Error('Empty response from Groq API');
     }
 
+    console.log('[AI Diagnostic] Groq response received successfully.');
     const parsed = JSON.parse(rawContent);
     const sanitized = sanitizeAiResponse(parsed, difficulty);
+    console.log('[AI Diagnostic] AI analysis result - has_misconception:', sanitized.has_misconception, sanitized.misconception ? `(type: "${sanitized.misconception.type}", confidence: ${sanitized.misconception.confidence})` : '');
 
     return {
       available: true,
@@ -188,5 +193,6 @@ Student Reasoning: ${student_reasoning || 'No reasoning provided.'}`;
 module.exports = {
   analyzeAttempt,
   sanitizeAiResponse,
-  setOpenAiClient,
+  setGroqClient,
+  setOpenAiClient: setGroqClient, // backwards compatibility alias
 };

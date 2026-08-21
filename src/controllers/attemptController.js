@@ -226,6 +226,7 @@ async function createAttempt(req, res, next) {
         q.topic,
         q.question_text,
         q.correct_answer,
+        q.difficulty,
         a.answer,
         a.reasoning,
         a.is_correct,
@@ -263,6 +264,7 @@ async function createAttempt(req, res, next) {
 
       // If a misconception was diagnosed, save it into misconceptions table
       if (aiResponse.has_misconception && aiResponse.misconception) {
+        console.log(`[AI Diagnostic] Inserting diagnosed misconception into database (attempt_id: ${attemptId})...`);
         const [miscResult] = await pool.execute(
           `INSERT INTO misconceptions (attempt_id, type, description, confidence, skill_area)
            VALUES (?, ?, ?, ?, ?)`,
@@ -278,9 +280,11 @@ async function createAttempt(req, res, next) {
         const misconceptionId = miscResult.insertId;
         aiAnalysisResult.misconception.misconception_id = misconceptionId;
         aiAnalysisResult.misconception.attempt_id = attemptId;
+        console.log(`[AI Diagnostic] Misconception inserted with ID: ${misconceptionId}`);
 
         // If a follow-up remediation question was generated, save into follow_up_questions table
         if (aiResponse.follow_up && aiResponse.follow_up.question_text) {
+          console.log(`[AI Diagnostic] Inserting follow-up remediation question into database (misconception_id: ${misconceptionId})...`);
           const [followupResult] = await pool.execute(
             `INSERT INTO follow_up_questions (misconception_id, question_text, expected_concept, difficulty)
              VALUES (?, ?, ?, ?)`,
@@ -294,6 +298,7 @@ async function createAttempt(req, res, next) {
 
           aiAnalysisResult.follow_up.followup_id = followupResult.insertId;
           aiAnalysisResult.follow_up.misconception_id = misconceptionId;
+          console.log(`[AI Diagnostic] Follow-up question inserted with ID: ${followupResult.insertId}`);
         }
       }
     } catch (aiError) {

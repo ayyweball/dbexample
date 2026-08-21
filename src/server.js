@@ -1,7 +1,8 @@
+const path = require('path');
 const dotenv = require('dotenv');
 
-// Load environment variables before importing app and db
-dotenv.config();
+// Load environment variables before importing app and db (resolving absolute path to root .env)
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = require('./app');
 const { testConnection, pool } = require('./config/db');
@@ -13,6 +14,8 @@ const server = app.listen(PORT, async () => {
   console.log(`  Backend Server is running on port ${PORT}`);
   console.log(`  Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`  API Health: http://localhost:${PORT}/api/health`);
+  console.log(`  Groq Model: ${process.env.GROQ_MODEL || 'openai/gpt-oss-20b'}`);
+  console.log(`  Groq API Key: ${process.env.GROQ_API_KEY ? 'Configured [OK]' : 'NOT CONFIGURED (Add to .env)'}`);
   console.log(`=================================================`);
 
   // Non-blocking connectivity test on startup

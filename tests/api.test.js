@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const request = require('supertest');
 const app = require('../src/app');
 const { pool } = require('../src/config/db');
-const { sanitizeAiResponse, analyzeAttempt, setOpenAiClient } = require('../src/services/aiService');
+const { sanitizeAiResponse, analyzeAttempt, setGroqClient } = require('../src/services/aiService');
 
 describe('API Routing & Validation Tests', () => {
   test('GET / should return welcome message and documentation links', async () => {
@@ -72,9 +72,9 @@ describe('API Routing & Validation Tests', () => {
   });
 });
 
-describe('AI Service & Misconception Analysis Tests', () => {
+describe('Groq AI Service & Misconception Analysis Tests', () => {
   afterEach(() => {
-    setOpenAiClient(null);
+    setGroqClient(null);
   });
 
   test('sanitizeAiResponse: should handle valid misconception and follow-up correctly', () => {
@@ -150,9 +150,9 @@ describe('AI Service & Misconception Analysis Tests', () => {
     assert.strictEqual(sanitized.follow_up, null);
   });
 
-  test('analyzeAttempt: should safely return unavailable when OPENAI_API_KEY is not set', async () => {
-    const originalKey = process.env.OPENAI_API_KEY;
-    delete process.env.OPENAI_API_KEY;
+  test('analyzeAttempt: should safely return unavailable when GROQ_API_KEY is not set', async () => {
+    const originalKey = process.env.GROQ_API_KEY;
+    delete process.env.GROQ_API_KEY;
 
     try {
       const result = await analyzeAttempt({
@@ -168,14 +168,14 @@ describe('AI Service & Misconception Analysis Tests', () => {
       assert.strictEqual(result.available, false);
       assert.strictEqual(result.analyzed, false);
       assert.strictEqual(result.has_misconception, false);
-      assert.ok(result.message.includes('OPENAI_API_KEY is not configured'));
+      assert.ok(result.message.includes('GROQ_API_KEY is not configured'));
     } finally {
-      if (originalKey) process.env.OPENAI_API_KEY = originalKey;
+      if (originalKey) process.env.GROQ_API_KEY = originalKey;
     }
   });
 
-  test('analyzeAttempt: should parse mocked OpenAI completion with misconception', async () => {
-    process.env.OPENAI_API_KEY = 'test-mock-key';
+  test('analyzeAttempt: should parse mocked Groq completion with misconception', async () => {
+    process.env.GROQ_API_KEY = 'gsk_mock_key';
 
     const mockClient = {
       chat: {
@@ -206,7 +206,7 @@ describe('AI Service & Misconception Analysis Tests', () => {
       },
     };
 
-    setOpenAiClient(mockClient);
+    setGroqClient(mockClient);
 
     try {
       const result = await analyzeAttempt({
@@ -226,12 +226,12 @@ describe('AI Service & Misconception Analysis Tests', () => {
       assert.strictEqual(result.misconception.confidence, 0.92);
       assert.strictEqual(result.follow_up.question_text, 'Solve 2x + 8 = 16');
     } finally {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env.GROQ_API_KEY;
     }
   });
 
-  test('analyzeAttempt: should parse mocked OpenAI completion with NO misconception', async () => {
-    process.env.OPENAI_API_KEY = 'test-mock-key';
+  test('analyzeAttempt: should parse mocked Groq completion with NO misconception', async () => {
+    process.env.GROQ_API_KEY = 'gsk_mock_key';
 
     const mockClient = {
       chat: {
@@ -253,7 +253,7 @@ describe('AI Service & Misconception Analysis Tests', () => {
       },
     };
 
-    setOpenAiClient(mockClient);
+    setGroqClient(mockClient);
 
     try {
       const result = await analyzeAttempt({
@@ -272,24 +272,24 @@ describe('AI Service & Misconception Analysis Tests', () => {
       assert.strictEqual(result.misconception, null);
       assert.strictEqual(result.follow_up, null);
     } finally {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env.GROQ_API_KEY;
     }
   });
 
-  test('analyzeAttempt: should handle OpenAI network/API error gracefully without throwing', async () => {
-    process.env.OPENAI_API_KEY = 'test-mock-key';
+  test('analyzeAttempt: should handle Groq network/API error gracefully without throwing', async () => {
+    process.env.GROQ_API_KEY = 'gsk_mock_key';
 
     const mockClient = {
       chat: {
         completions: {
           create: async () => {
-            throw new Error('Connection timeout to api.openai.com');
+            throw new Error('Connection timeout to api.groq.com');
           },
         },
       },
     };
 
-    setOpenAiClient(mockClient);
+    setGroqClient(mockClient);
 
     try {
       const result = await analyzeAttempt({
@@ -307,7 +307,7 @@ describe('AI Service & Misconception Analysis Tests', () => {
       assert.strictEqual(result.has_misconception, false);
       assert.ok(result.message.includes('Connection timeout'));
     } finally {
-      delete process.env.OPENAI_API_KEY;
+      delete process.env.GROQ_API_KEY;
     }
   });
 });
