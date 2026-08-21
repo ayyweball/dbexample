@@ -1,5 +1,6 @@
 const { pool } = require('../config/db');
 const { AppError } = require('../middleware/errorHandler');
+const { analyzeAttempt } = require('../services/aiService');
 
 /**
  * Get all attempts with optional filters (student_id, question_id, is_correct)
@@ -139,7 +140,7 @@ async function getAttemptById(req, res, next) {
 }
 
 /**
- * Submit / Create a new attempt
+ * Submit / Create a new attempt and analyze for misconceptions using AI
  */
 async function createAttempt(req, res, next) {
   try {
@@ -180,14 +181,14 @@ async function createAttempt(req, res, next) {
 
     // Verify question exists
     const [question] = await pool.execute(
-      'SELECT question_id, correct_answer FROM questions WHERE question_id = ?',
+      'SELECT question_id, subject, topic, question_text, correct_answer, difficulty FROM questions WHERE question_id = ?',
       [question_id]
     );
     if (question.length === 0) {
       throw new AppError(`Question with ID ${question_id} does not exist`, 404);
     }
 
-    // Auto calculate is_correct if not explicitly provided
+    // Auto calculate is_correct using database correct_answer if not explicitly provided
     let calculatedIsCorrect;
     if (is_correct !== undefined && is_correct !== null) {
       calculatedIsCorrect = Boolean(is_correct);
@@ -197,6 +198,7 @@ async function createAttempt(req, res, next) {
       calculatedIsCorrect = studentAns === correctAns;
     }
 
+    // Step 1: Save the attempt to MySQL FIRST
     const [result] = await pool.execute(
       `INSERT INTO attempts 
         (student_id, question_id, answer, reasoning, is_correct, hesitation_seconds, revision_count) 
@@ -211,6 +213,8 @@ async function createAttempt(req, res, next) {
         parsedRevisions,
       ]
     );
+
+    const attemptId = result.insertId;
 
     const [newAttempt] = await pool.execute(`
       SELECT 
@@ -232,12 +236,85 @@ async function createAttempt(req, res, next) {
       JOIN students s ON a.student_id = s.student_id
       JOIN questions q ON a.question_id = q.question_id
       WHERE a.attempt_id = ?
-    `, [result.insertId]);
+    `, [attemptId]);
+
+    const savedAttempt = newAttempt[0];
+
+    // Step 2: AI Misconception Analysis (Non-blocking & resilient)
+    let aiAnalysisResult = {
+      analyzed: false,
+      has_misconception: false,
+      misconception: null,
+      follow_up: null,
+    };
+
+    try {
+      const aiResponse = await analyzeAttempt({
+        question_text: savedAttempt.question_text,
+        subject: savedAttempt.subject,
+        topic: savedAttempt.topic,
+        difficulty: savedAttempt.difficulty,
+        correct_answer: savedAttempt.correct_answer,
+        student_answer: savedAttempt.answer,
+        student_reasoning: savedAttempt.reasoning,
+      });
+
+      aiAnalysisResult = aiResponse;
+
+      // If a misconception was diagnosed, save it into misconceptions table
+      if (aiResponse.has_misconception && aiResponse.misconception) {
+        const [miscResult] = await pool.execute(
+          `INSERT INTO misconceptions (attempt_id, type, description, confidence, skill_area)
+           VALUES (?, ?, ?, ?, ?)`,
+          [
+            attemptId,
+            aiResponse.misconception.type,
+            aiResponse.misconception.description,
+            aiResponse.misconception.confidence,
+            aiResponse.misconception.skill_area,
+          ]
+        );
+
+        const misconceptionId = miscResult.insertId;
+        aiAnalysisResult.misconception.misconception_id = misconceptionId;
+        aiAnalysisResult.misconception.attempt_id = attemptId;
+
+        // If a follow-up remediation question was generated, save into follow_up_questions table
+        if (aiResponse.follow_up && aiResponse.follow_up.question_text) {
+          const [followupResult] = await pool.execute(
+            `INSERT INTO follow_up_questions (misconception_id, question_text, expected_concept, difficulty)
+             VALUES (?, ?, ?, ?)`,
+            [
+              misconceptionId,
+              aiResponse.follow_up.question_text,
+              aiResponse.follow_up.expected_concept,
+              aiResponse.follow_up.difficulty,
+            ]
+          );
+
+          aiAnalysisResult.follow_up.followup_id = followupResult.insertId;
+          aiAnalysisResult.follow_up.misconception_id = misconceptionId;
+        }
+      }
+    } catch (aiError) {
+      console.warn(`[AI Integration Warning] Non-blocking AI error during attempt ${attemptId}: ${aiError.message}`);
+      aiAnalysisResult = {
+        available: false,
+        analyzed: false,
+        message: `AI analysis unavailable: ${aiError.message}`,
+        has_misconception: false,
+        misconception: null,
+        follow_up: null,
+      };
+    }
 
     res.status(201).json({
       success: true,
       message: 'Attempt recorded successfully',
-      data: newAttempt[0],
+      data: {
+        ...savedAttempt,
+        ai_analysis: aiAnalysisResult,
+      },
     });
   } catch (error) {
     next(error);

@@ -1,6 +1,6 @@
 # Student Learning & Misconception Remediation API
 
-A clean, modular REST API backend built with **Node.js**, **Express.js**, and **MySQL** (`mysql2/promise`). Designed for educational analytics, tracking student learning attempts, diagnosing misconceptions, and delivering targeted remediation follow-up questions.
+A clean, modular REST API backend built with **Node.js**, **Express.js**, **MySQL** (`mysql2/promise`), and **OpenAI API**. Designed for educational analytics, tracking student learning attempts, diagnosing cognitive misconceptions in student reasoning using AI, and delivering targeted remediation follow-up questions.
 
 ---
 
@@ -9,6 +9,7 @@ A clean, modular REST API backend built with **Node.js**, **Express.js**, and **
 - **Framework:** Express.js (v4)
 - **Database:** MySQL (v8.0+)
 - **Driver:** `mysql2/promise` (connection pooling with parameterized queries)
+- **AI Integration:** OpenAI API (`openai` SDK) with structured outputs
 - **CORS:** Configured for React + Vite + Tailwind frontend
 
 ---
@@ -23,12 +24,14 @@ dbex/
 │   ├── controllers/
 │   │   ├── studentController.js         # Student CRUD, attempts, misconceptions, summary
 │   │   ├── questionController.js        # Question bank CRUD & subject/topic grouping
-│   │   ├── attemptController.js         # Attempt logging & telemetry
+│   │   ├── attemptController.js         # Attempt logging, AI integration & telemetry
 │   │   ├── misconceptionController.js   # Misconception diagnosis tracking
 │   │   ├── followupQuestionController.js # Remediation follow-up questions
 │   │   ├── followupAttemptController.js  # Follow-up attempt tracking
 │   │   ├── statsController.js           # Platform-wide analytics
 │   │   └── healthController.js          # Health check endpoint
+│   ├── services/
+│   │   └── aiService.js                 # OpenAI misconception analysis & schema sanitization
 │   ├── middleware/
 │   │   ├── errorHandler.js              # Centralized error handler & MySQL error mapping
 │   │   └── notFound.js                  # 404 handler
@@ -47,7 +50,7 @@ dbex/
 ├── scripts/
 │   └── initDb.js                        # Optional manual DB setup helper script
 ├── tests/
-│   └── api.test.js                      # Automated API & validation tests
+│   └── api.test.js                      # Automated API, validation & AI mock tests
 ├── schema.sql                           # Database schema definition (source of truth)
 ├── seed.sql                             # Initial sample questions & data (source of truth)
 ├── .env.example                         # Template for environment variables
@@ -70,7 +73,7 @@ npm install
 ---
 
 ### 2. Configure Environment Variables
-Copy `.env.example` to create your `.env` file:
+Copy `.env.example` to create your local `.env` file:
 
 **Windows (PowerShell):**
 ```powershell
@@ -82,17 +85,23 @@ Copy-Item .env.example .env
 cp .env.example .env
 ```
 
-Open `.env` and set your MySQL credentials:
+Open `.env` and fill in your MySQL credentials and OpenAI API Key:
 ```env
+# Server Configuration
 PORT=5000
 NODE_ENV=development
 CORS_ORIGIN=http://localhost:3000,http://localhost:5173
 
+# MySQL Database Configuration
 DB_HOST=localhost
 DB_PORT=3306
 DB_USER=root
 DB_PASSWORD=your_mysql_password
 DB_NAME=student
+
+# OpenAI Configuration
+OPENAI_API_KEY=sk-...your_openai_api_key_here...
+OPENAI_MODEL=gpt-4o-mini
 ```
 
 ---
@@ -101,8 +110,7 @@ DB_NAME=student
 
 You can initialize the database using either the **Node script** or the **MySQL CLI**:
 
-#### Option A: Using the built-in Node script (Recommended & cross-platform)
-Once you have configured `.env` with your MySQL credentials, run:
+#### Option A: Using the built-in Node command (Recommended & cross-platform)
 ```bash
 npm run db:init
 ```
@@ -145,10 +153,34 @@ When started, you should see:
 
 ### 5. Running Automated Tests
 
-Run the built-in test suite to verify routing, validation rules, and error handling:
+Run the built-in test suite to verify routing, validation rules, error handling, and mocked OpenAI detection flows:
 ```bash
 npm test
 ```
+
+---
+
+## AI Misconception Detection & Remediation Flow
+
+When a student submits an attempt via `POST /api/attempts`:
+
+```text
+React Frontend
+      ↓
+POST /api/attempts
+      ↓
+Step 1: Attempt is saved to MySQL `attempts` table FIRST (authoritative correct_answer evaluated)
+      ↓
+Step 2: OpenAI analyzes question, correct answer, student answer, and student reasoning
+      ↓
+Step 3: If misconception is diagnosed:
+        → Inserts diagnosed misconception into `misconceptions` table
+        → Generates & inserts targeted remediation question into `follow_up_questions` table
+      ↓
+Step 4: Returns HTTP 201 with attempt data + `ai_analysis`
+```
+
+> **Resilience Guarantee:** If OpenAI is unconfigured, times out, or encounters an API error, the student's attempt is **never rolled back or lost**. The endpoint returns `201 Created` with `ai_analysis: { analyzed: false, message: "..." }`.
 
 ---
 
@@ -158,17 +190,6 @@ Base URL: `http://localhost:5000/api`
 
 ### Health Check
 - **`GET /api/health`** — Checks server status and MySQL connection.
-  ```json
-  {
-    "status": "healthy",
-    "timestamp": "2026-08-22T02:40:00.000Z",
-    "uptime_seconds": 12.34,
-    "database": {
-      "connected": true
-    },
-    "environment": "development"
-  }
-  ```
 
 ---
 
@@ -204,20 +225,64 @@ Base URL: `http://localhost:5000/api`
 | :--- | :--- | :--- |
 | `GET` | `/api/attempts` | List attempts (filter: `?student_id=`, `?question_id=`, `?is_correct=`) |
 | `GET` | `/api/attempts/:id` | Get attempt with student, question, misconceptions & follow-up attempts |
-| `POST` | `/api/attempts` | Record an attempt |
+| `POST` | `/api/attempts` | Submit attempt and run AI misconception diagnosis |
 | `PUT` | `/api/attempts/:id` | Update attempt details |
 | `DELETE` | `/api/attempts/:id` | Delete attempt |
 
-#### Sample Attempt Request (`POST /api/attempts`):
+#### Sample Request to `POST /api/attempts` (Intentionally Incorrect with Misconception Reasoning):
 ```json
 {
   "student_id": 1,
   "question_id": 1,
-  "answer": "4",
-  "reasoning": "Subtracted 6 from 14 to get 8, then divided by 2 to get 4.",
-  "is_correct": true,
-  "hesitation_seconds": 12.5,
-  "revision_count": 0
+  "answer": "10",
+  "reasoning": "For 2x + 6 = 14, I added 6 to 14 to get 20, then divided 20 by 2 to get x = 10.",
+  "hesitation_seconds": 15.2,
+  "revision_count": 1
+}
+```
+
+#### Sample Response:
+```json
+{
+  "success": true,
+  "message": "Attempt recorded successfully",
+  "data": {
+    "attempt_id": 1,
+    "student_id": 1,
+    "student_name": "Rahul",
+    "question_id": 1,
+    "subject": "Mathematics",
+    "topic": "Linear Equations",
+    "question_text": "Solve 2x + 6 = 14.",
+    "correct_answer": "4",
+    "answer": "10",
+    "reasoning": "For 2x + 6 = 14, I added 6 to 14 to get 20, then divided 20 by 2 to get x = 10.",
+    "is_correct": false,
+    "hesitation_seconds": 15.2,
+    "revision_count": 1,
+    "timestamp": "2026-08-22T03:00:00.000Z",
+    "ai_analysis": {
+      "available": true,
+      "analyzed": true,
+      "model": "gpt-4o-mini",
+      "has_misconception": true,
+      "misconception": {
+        "misconception_id": 1,
+        "attempt_id": 1,
+        "type": "Inverse Operation / Sign Transposition Error",
+        "description": "The student added 6 instead of subtracting 6 when isolating the variable term across the equation.",
+        "confidence": 0.95,
+        "skill_area": "Algebraic Manipulation"
+      },
+      "follow_up": {
+        "followup_id": 1,
+        "misconception_id": 1,
+        "question_text": "Solve 3x + 9 = 24. What is the value of x?",
+        "expected_concept": "Subtraction property of equality (inverse operations)",
+        "difficulty": "Easy"
+      }
+    }
+  }
 }
 ```
 
@@ -231,17 +296,6 @@ Base URL: `http://localhost:5000/api`
 | `POST` | `/api/misconceptions` | Record diagnosed misconception |
 | `PUT` | `/api/misconceptions/:id` | Update misconception |
 | `DELETE` | `/api/misconceptions/:id` | Delete misconception |
-
-#### Sample Misconception Request (`POST /api/misconceptions`):
-```json
-{
-  "attempt_id": 1,
-  "type": "Sign Inversion Error",
-  "description": "Student subtracted when transposition required addition.",
-  "confidence": 0.85,
-  "skill_area": "Algebraic Manipulation"
-}
-```
 
 ---
 
@@ -272,33 +326,19 @@ Base URL: `http://localhost:5000/api`
 
 ---
 
-## Testing Endpoints via PowerShell or cURL
+## Verifying in MySQL
 
-### 1. Check Health
-```bash
-curl http://localhost:5000/api/health
-```
+After submitting an attempt with a misconception, you can verify the persisted records in MySQL:
 
-### 2. Get All Questions
-```bash
-curl http://localhost:5000/api/questions
-```
+```sql
+USE student;
 
-### 3. Create a New Student
-```bash
-curl -X POST http://localhost:5000/api/students \
-  -H "Content-Type: application/json" \
-  -d "{\"name\":\"Aanya Sharma\",\"email\":\"aanya@example.com\"}"
-```
+-- View the saved attempt
+SELECT * FROM attempts ORDER BY attempt_id DESC LIMIT 1;
 
-### 4. Record a Learning Attempt
-```bash
-curl -X POST http://localhost:5000/api/attempts \
-  -H "Content-Type: application/json" \
-  -d "{\"student_id\":1,\"question_id\":1,\"answer\":\"4\",\"reasoning\":\"2x = 8, so x = 4\",\"is_correct\":true,\"hesitation_seconds\":8.5,\"revision_count\":0}"
-```
+-- View the AI-diagnosed misconception
+SELECT * FROM misconceptions ORDER BY misconception_id DESC LIMIT 1;
 
-### 5. Get Analytics Overview
-```bash
-curl http://localhost:5000/api/stats/overview
+-- View the generated remediation follow-up question
+SELECT * FROM follow_up_questions ORDER BY followup_id DESC LIMIT 1;
 ```
