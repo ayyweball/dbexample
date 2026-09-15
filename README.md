@@ -1,101 +1,235 @@
-# Secure the Repo — Student Learning & AI Misconception Remediation Platform
+# Mindtrace
 
-A full-stack EdTech platform featuring a **Node.js + Express + MySQL** backend and a **React + TypeScript + Tailwind CSS** frontend, integrated with the **Groq API** (`groq-sdk`) for real-time cognitive misconception diagnosis and automated remediation pathways.
+Mindtrace is a full-stack EdTech platform that tracks student performance and uses AI to identify underlying misconceptions instead of simply marking answers as right or wrong.
 
----
+It combines practice attempts, reasoning, confidence, and hesitation data with AI-based analysis to identify possible cognitive misconceptions and generate targeted follow-up questions for remediation.
 
 ## Tech Stack
 
 ### Frontend
-- **Framework:** React (v18) + TypeScript
-- **Bundler:** Vite
-- **Styling:** Tailwind CSS + Lucide React Icons
-- **HTTP Client:** Fetch API with typed service layer
+
+* React 18
+* TypeScript
+* Vite
+* Tailwind CSS
+* Lucide React
+* Fetch API
 
 ### Backend
-- **Runtime:** Node.js (v18+)
-- **Framework:** Express.js (v4)
-- **Database:** MySQL (v8.0+)
-- **Driver:** `mysql2/promise` (connection pooling with parameterized queries)
-- **AI Engine:** Groq API (`groq-sdk`) with structured diagnostic prompts
 
----
+* Node.js
+* Express.js
+* MySQL 8
+* `mysql2/promise`
+* Groq API
+* `groq-sdk`
 
-## Repository Structure
+### Testing
 
-```
-dbex/
-├── frontend/                            # React + TypeScript + Tailwind Frontend
+* Jest
+* Supertest
+
+## Features
+
+* Interactive practice environment
+* Student management and profiles
+* Question bank with filtering and search
+* Attempt and performance tracking
+* Confidence and hesitation telemetry
+* AI-powered misconception detection
+* Misconception repository
+* AI-generated remediation questions
+* Follow-up remediation attempts
+* Student-level performance analytics
+* Platform-wide analytics
+* API health monitoring
+* Graceful handling of AI/API failures
+
+## How It Works
+
+When a student submits an answer:
+
+1. The attempt is validated and saved to MySQL.
+2. The answer is evaluated against the correct answer stored in the database.
+3. The student's answer and reasoning are sent to Groq for misconception analysis.
+4. If a misconception is detected, it is stored in the database.
+5. A targeted follow-up question is generated for that misconception.
+6. The student can attempt the remediation question through the Remediation Center.
+
+The original attempt is always saved before AI processing, so a Groq failure does not result in lost student data.
+
+## Project Structure
+
+```text
+mindtrace/
+├── frontend/
 │   ├── src/
 │   │   ├── components/
-│   │   │   ├── common/                  # Badge, StatCard, Modal, FeedbackStates
-│   │   │   ├── layout/                  # Navbar (with Live API health), Sidebar
-│   │   │   └── practice/                # TelemetryTimer, AiMisconceptionCard
+│   │   │   ├── common/
+│   │   │   ├── layout/
+│   │   │   └── practice/
 │   │   ├── pages/
-│   │   │   ├── DashboardPage.tsx        # KPI metrics, subject volume, top misconceptions
-│   │   │   ├── PracticeStudioPage.tsx   # Interactive solver with real-time AI diagnosis
-│   │   │   ├── MisconceptionsPage.tsx   # Repository of cognitive reasoning flaws
-│   │   │   ├── RemediationCenterPage.tsx# Follow-up remediation test solver
-│   │   │   ├── QuestionBankPage.tsx     # Question bank browsing and creation
-│   │   │   ├── StudentsPage.tsx         # Student roster and registration
-│   │   │   ├── StudentDetailPage.tsx    # Individual student diagnostic profile
-│   │   └── AnalyticsPage.tsx        # Platform-wide cognitive analytics
+│   │   │   ├── DashboardPage.tsx
+│   │   │   ├── PracticeStudioPage.tsx
+│   │   │   ├── MisconceptionsPage.tsx
+│   │   │   ├── RemediationCenterPage.tsx
+│   │   │   ├── QuestionBankPage.tsx
+│   │   │   ├── StudentsPage.tsx
+│   │   │   ├── StudentDetailPage.tsx
+│   │   │   └── AnalyticsPage.tsx
 │   │   ├── services/
-│   │   │   └── api.ts                   # Centralized API service consuming backend
+│   │   │   └── api.ts
 │   │   ├── types/
-│   │   │   └── api.ts                   # TypeScript interfaces matching backend models
-│   │   ├── App.tsx                      # Main app shell with stateful navigation
+│   │   │   └── api.ts
+│   │   ├── App.tsx
 │   │   └── main.tsx
 │   ├── .env.example
-│   ├── .gitignore
-│   ├── package.json
-│   ├── tailwind.config.js
-│   └── vite.config.ts
-├── src/                                 # Node.js + Express Backend
-│   ├── config/                          # MySQL connection pool configuration
-│   ├── controllers/                     # Controllers (students, questions, attempts, etc.)
-│   ├── services/                        # Groq misconception analysis service
-│   ├── middleware/                      # Centralized error handler & 404
-│   ├── routes/                          # API route definitions
-│   ├── app.js                           # Express application setup
-│   └── server.js                        # HTTP server entrypoint
+│   └── package.json
+│
+├── src/
+│   ├── config/
+│   ├── controllers/
+│   ├── services/
+│   ├── middleware/
+│   ├── routes/
+│   ├── app.js
+│   └── server.js
+│
 ├── scripts/
-│   └── initDb.js                        # Optional manual DB setup script
+│   └── initDb.js
 ├── tests/
-│   └── api.test.js                      # Automated API, validation & Groq mock tests
-├── schema.sql                           # Database schema definition (source of truth)
-├── seed.sql                             # Initial questions & sample data (source of truth)
-├── .env.example                         # Backend environment variables template
+│   └── api.test.js
+├── schema.sql
+├── seed.sql
+├── .env.example
 ├── .gitignore
 ├── package.json
 └── README.md
 ```
 
----
+## API
 
-## Step-by-Step Setup Guide
+Base URL:
 
-### 1. Backend Setup
+```text
+http://localhost:5000/api
+```
 
-#### 1.1 Install Backend Dependencies
+### Health
+
+```http
+GET /api/health
+```
+
+### Students
+
+```http
+GET    /api/students
+GET    /api/students/:id
+GET    /api/students/:id/summary
+GET    /api/students/:id/attempts
+GET    /api/students/:id/misconceptions
+POST   /api/students
+```
+
+`GET /api/students` supports `?search=`.
+
+### Questions
+
+```http
+GET    /api/questions
+GET    /api/questions/meta/subjects
+GET    /api/questions/:id
+POST   /api/questions
+```
+
+Supported filters:
+
+```text
+?subject=
+?topic=
+?difficulty=
+?search=
+```
+
+### Attempts
+
+```http
+GET    /api/attempts
+GET    /api/attempts/:id
+POST   /api/attempts
+```
+
+Supported filters:
+
+```text
+?student_id=
+?question_id=
+?is_correct=
+```
+
+`POST /api/attempts` saves the attempt and triggers the AI misconception analysis.
+
+### Misconceptions
+
+```http
+GET /api/misconceptions
+GET /api/misconceptions/:id
+```
+
+Supported filters:
+
+```text
+?student_id=
+?skill_area=
+```
+
+### Follow-up Questions
+
+```http
+GET /api/followup-questions
+GET /api/followup-attempts
+POST /api/followup-attempts
+```
+
+### Analytics
+
+```http
+GET /api/stats/overview
+```
+
+## Setup
+
+### Requirements
+
+* Node.js 18+
+* MySQL 8+
+* Groq API key
+
+### Backend
+
+Install dependencies:
+
 ```bash
 npm install
 ```
 
-#### 1.2 Configure Backend Environment Variables
-Copy `.env.example` to `.env`:
+Create the environment file:
 
-**Windows (PowerShell):**
+**Windows:**
+
 ```powershell
 Copy-Item .env.example .env
 ```
 
-**Linux / macOS:**
+**macOS/Linux:**
+
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and fill in your MySQL credentials and Groq API key:
+Configure `.env`:
+
 ```env
 PORT=5000
 NODE_ENV=development
@@ -107,132 +241,145 @@ DB_USER=root
 DB_PASSWORD=your_mysql_password
 DB_NAME=student
 
-# Groq AI Configuration
-GROQ_API_KEY=gsk_...your_groq_api_key_here...
+GROQ_API_KEY=gsk_...
 GROQ_MODEL=openai/gpt-oss-20b
 ```
 
-#### 1.3 Initialize the MySQL Database
+Initialize the database:
+
 ```bash
 npm run db:init
 ```
-*(Executes `schema.sql` to create database and tables, and `seed.sql` to populate sample questions and students).*
 
-#### 1.4 Start the Backend Server
+Start the backend:
+
 ```bash
 npm run dev
 ```
-Backend runs at: `http://localhost:5000` (API Base: `http://localhost:5000/api`)
 
----
+The backend runs on:
 
-### 2. Frontend Setup
+```text
+http://localhost:5000
+```
 
-#### 2.1 Install Frontend Dependencies
+### Frontend
+
 ```bash
 cd frontend
 npm install
 ```
 
-#### 2.2 Configure Frontend Environment Variables
-Copy `frontend/.env.example` to `frontend/.env`:
+Create the frontend environment file:
 
 ```bash
-# Inside frontend/ directory:
 cp .env.example .env
 ```
 
-Ensure `frontend/.env` contains:
+Set:
+
 ```env
 VITE_API_URL=http://localhost:5000/api
 ```
 
-#### 2.3 Start the Frontend Development Server
+Start the frontend:
+
 ```bash
 npm run dev
 ```
-Frontend runs at: `http://localhost:5173`
 
----
-
-## 3. Running Automated Backend Tests
-
-```bash
-# In project root:
-npm test
-```
-Executes 15 automated test suites covering:
-- API routing & HTTP error translation
-- Parameter validation rules (difficulty enum, confidence range `0.00-1.00`, non-negative hesitation)
-- Mocked Groq misconception detection
-- Mocked Groq failure/offline fallback (guarantees student attempt is preserved with 201)
-
----
-
-## AI Misconception Detection & Remediation Flow
+The frontend runs on:
 
 ```text
-React Frontend (Practice Studio)
-      ↓
-POST /api/attempts
-      ↓
-Step 1: Attempt is saved to MySQL `attempts` table FIRST (authoritative correct_answer evaluated)
-      ↓
-Step 2: Groq API analyzes question, correct answer, student answer, and student reasoning
-      ↓
-Step 3: If misconception is diagnosed:
-        → Inserts diagnosed misconception into `misconceptions` table
-        → Generates & inserts targeted remediation question into `follow_up_questions` table
-      ↓
-Step 4: Returns HTTP 201 with attempt data + `ai_analysis`
-      ↓
-React Frontend renders Cognitive Diagnostic Card + Follow-up Remediation Challenge
+http://localhost:5173
 ```
 
-> **Resilience Guarantee:** If Groq is unconfigured, times out, or encounters an API error, the student's attempt is **never rolled back or lost**. The endpoint returns `201 Created` with `ai_analysis: { analyzed: false, message: "..." }`.
+## Testing
 
----
+From the project root:
 
-## API Endpoints Reference
+```bash
+npm test
+```
 
-Base URL: `http://localhost:5000/api`
+The test suite covers API routing, validation, error handling, misconception detection, and Groq failure scenarios.
 
-| Module | Endpoint | Description |
-| :--- | :--- | :--- |
-| **Health** | `GET /api/health` | Backend status & live MySQL ping check |
-| **Stats** | `GET /api/stats/overview` | Platform-wide totals, subject breakdown & top misconceptions |
-| **Students** | `GET /api/students` | List all students (`?search=`) |
-| | `GET /api/students/:id` | Get single student details |
-| | `GET /api/students/:id/summary` | Student accuracy, telemetry averages, subject stats |
-| | `GET /api/students/:id/attempts` | Student's full attempt history |
-| | `GET /api/students/:id/misconceptions` | Student's diagnosed misconceptions |
-| | `POST /api/students` | Register new student (`name`, `email`) |
-| **Questions** | `GET /api/questions` | List questions (`?subject=`, `?topic=`, `?difficulty=`, `?search=`) |
-| | `GET /api/questions/meta/subjects` | Unique subjects and topics list |
-| | `GET /api/questions/:id` | Get question by ID |
-| | `POST /api/questions` | Add question (`subject`, `topic`, `question_text`, `correct_answer`, `difficulty`) |
-| **Attempts** | `GET /api/attempts` | List attempts (`?student_id=`, `?question_id=`, `?is_correct=`) |
-| | `GET /api/attempts/:id` | Get attempt with student, question, misconceptions & follow-up attempts |
-| | `POST /api/attempts` | Submit practice attempt & trigger AI diagnostic analysis |
-| **Misconceptions**| `GET /api/misconceptions` | List diagnosed misconceptions (`?student_id=`, `?skill_area=`) |
-| | `GET /api/misconceptions/:id` | Get misconception details with linked follow-up question |
-| **Follow-up** | `GET /api/followup-questions` | List targeted remediation questions |
-| | `GET /api/followup-attempts` | List remediation attempt resolutions |
-| | `POST /api/followup-attempts` | Submit answer to remediation question |
+Groq calls are mocked during testing, so the tests do not depend on the live API.
 
----
+## AI Failure Handling
 
-## Verifying in MySQL
+AI analysis is not required for an attempt to be saved.
+
+If Groq is unavailable, unconfigured, or returns an error, the attempt is still stored and the API returns a successful `201 Created` response with:
+
+```json
+{
+  "analyzed": false,
+  "message": "AI analysis unavailable"
+}
+```
+
+This keeps the core learning data independent of the AI service.
+
+## Database
+
+The database schema is defined in `schema.sql` and initial data is provided in `seed.sql`.
+
+Main entities include:
+
+* Students
+* Questions
+* Attempts
+* Misconceptions
+* Follow-up Questions
+* Follow-up Attempts
+
+To inspect recent data:
 
 ```sql
 USE student;
 
--- View the latest student attempt
-SELECT * FROM attempts ORDER BY attempt_id DESC LIMIT 1;
+SELECT * 
+FROM attempts 
+ORDER BY attempt_id DESC 
+LIMIT 1;
 
--- View the AI-diagnosed misconception
-SELECT * FROM misconceptions ORDER BY misconception_id DESC LIMIT 1;
+SELECT * 
+FROM misconceptions 
+ORDER BY misconception_id DESC 
+LIMIT 1;
 
--- View the generated follow-up remediation question
-SELECT * FROM follow_up_questions ORDER BY followup_id DESC LIMIT 1;
+SELECT * 
+FROM follow_up_questions 
+ORDER BY followup_id DESC 
+LIMIT 1;
 ```
+
+## Environment Variables
+
+Do not commit `.env` files or API keys to the repository.
+
+Backend:
+
+```text
+PORT
+NODE_ENV
+CORS_ORIGIN
+DB_HOST
+DB_PORT
+DB_USER
+DB_PASSWORD
+DB_NAME
+GROQ_API_KEY
+GROQ_MODEL
+```
+
+Frontend:
+
+```text
+VITE_API_URL
+```
+
+## Status
+
+Mindtrace is currently under active development.
